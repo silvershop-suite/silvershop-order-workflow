@@ -1,0 +1,65 @@
+{
+    "name": "silvershop-suite/order-workflow",
+    "description": "Formalises the SilverShop order lifecycle as a Symfony Workflow state machine over the existing Order.Status field. Advisory by default (observes and logs every transition); opt-in strict mode enforces the configured graph by vetoing illegal transitions. Builds on core's setStatus() funnel / onBeforeStatusChange hook.",
+    "type": "silverstripe-vendormodule",
+    "keywords": ["silverstripe", "silvershop", "ecommerce", "order", "status", "workflow", "state machine"],
+    "license": "BSD-3-Clause",
+    "authors": [
+        {
+            "name": "Remy Vaartjes",
+            "email": "remy@xd.nl",
+            "role": "Lead developer"
+        },
+        {
+            "name": "SilverShop-Suite Contributors"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "silverstripe/framework": "^6",
+        "silverstripe/cms": "^6",
+        "silvershop/core": "^6.2",
+        "symfony/workflow": "^7.4"
+    },
+    "require-dev": {
+        "cambis/silverstan": "^2.1",
+        "silverstripe/recipe-testing": "^4",
+        "silverstripe/sqlite3": "^4",
+        "squizlabs/php_codesniffer": "^3.0"
+    },
+    "suggest": {
+        "silvershop-suite/order-admin": "Surfaces the transition timeline and a graph-aware status changer in the CMS.",
+        "silvershop-suite/ledger": "Consumes the immutable transition log as an audit source for posting/invoicing."
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "stan": "vendor/bin/phpstan analyse --configuration=phpstan.neon --memory-limit=-1",
+        "lint": "vendor/bin/phpcs",
+        "lint:fix": "vendor/bin/phpcbf"
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true,
+            "silverstripe/recipe-plugin": true,
+            "silverstripe/vendor-plugin": true,
+            "php-http/discovery": false
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "SilverShop\\OrderWorkflow\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SilverShop\\OrderWorkflow\\Tests\\": "tests/php/"
+        }
+    },
+    "prefer-stable": true,
+    "minimum-stability": "dev"
+}
