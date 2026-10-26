@@ -18,6 +18,18 @@ class OrderWorkflowExtensionTest extends SapphireTest
 {
     protected $usesDatabase = true;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // The whole extension hangs off core's Order::setStatus() funnel (silvershop/core #928),
+        // which is not yet in a tagged release. Skip rather than error when it is absent, so CI is
+        // meaningful today and these integration tests self-activate once the funnel ships.
+        if (!Order::singleton()->hasMethod('setStatus')) {
+            $this->markTestSkipped('Requires the silvershop/core Order::setStatus() funnel (#928, unreleased).');
+        }
+    }
+
     private function newOrder(string $status = 'Cart'): Order
     {
         $order = Order::create();
