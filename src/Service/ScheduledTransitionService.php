@@ -149,10 +149,10 @@ class ScheduledTransitionService
 
             if ($apply && !$dormant) {
                 foreach ($due as $order) {
-                    // Called dynamically: setStatus() only exists once core #928 ships, and isDormant() already
-                    // gated us. Routing through it (not a raw setField) is what fires the log + notifications + ledger.
-                    $setStatus = 'setStatus';
-                    $order->$setStatus($rule['to'], $rule['transition']);
+                    // isDormant() has already confirmed the funnel is present. Routing through setStatus() (not a raw
+                    // setField) is what fires the log + notifications + ledger. phpstan can't see the method because CI
+                    // resolves the pre-#928 core tag — see the scoped ignore in phpstan.neon.
+                    $order->setStatus($rule['to'], $rule['transition']);
                     $order->write();
 
                     if ((string) $order->Status === $rule['to']) {
