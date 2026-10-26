@@ -47,10 +47,14 @@ OrderWorkflowService::singleton()->enabledTransitions($order);           // or t
 ```
 
 Returns the transitions enabled from the order's current `Status`, each as
-`['name' => <transition>, 'from' => <current status>, 'to' => <target status>]` — e.g. from `Paid`:
-`process → Processing`, `send → Sent`, `admin_cancel`, `member_cancel`. Empty for a terminal or unknown
+`['name' => <transition>, 'from' => <current status>, 'to' => <target status>, 'permission' => <code|null>]` — e.g.
+from `Paid`: `process → Processing`, `send → Sent`, `admin_cancel`, `member_cancel`. Empty for a terminal or unknown
 status. In strict mode these are the only changes the veto permits; in advisory mode they are the graph's
 suggested next steps (an off-graph change still goes through, just logged as off-graph).
+
+`enabledTransitions()` is the full graph-enabled set regardless of viewer. To render buttons for the **current
+member**, use [`permittedTransitions()`](#permission-gated-transitions), which drops any the member lacks the
+permission for.
 
 ## Scheduled transitions
 
@@ -131,6 +135,56 @@ The sweep is **idempotent** — it only ever touches orders *still* in `from`, s
 the cron task together) can never double-fire. Like the rest of the module it is **dormant** until core's
 `setStatus()` funnel (#928) ships: without it the sweep fires nothing and the task says so, rather than writing a raw
 status that would bypass the log, notifications and ledger.
+
+## Permission-gated transitions
+
+Restrict individual transitions to members who hold a given permission — e.g. only staff with
+`SHOP_CANCEL_ORDERS` may cancel a paid order, while anyone handling fulfilment can mark it `Sent`. The gate is
+honoured in **both** directions, from one declarative source:
+
+- **UI** — `permittedTransitions()` hides a gated action from members who lack the code, so they never see a button
+  they cannot use.
+- **Enforcement** — in strict mode the `onBeforeStatusChange` veto blocks a gated change by a member without the code,
+  so the rule holds even against a hand-crafted request or the free CMS status dropdown.
+
+### Configure
+
+Add an optional `permission` to any transition in the graph (ungated by default):
+
+```yaml
+SilverShop\OrderWorkflow\Workflow\OrderWorkflowService:
+  transitions:
+    admin_cancel:
+      from: ['Unpaid', 'Paid', 'Processing']
+      to: 'AdminCancelled'
+      permission: 'SHOP_CANCEL_ORDERS'   # only holders of this code may fire it
+```
+
+The code is any SilverStripe permission (a core one such as `ADMIN`, or your own registered via
+`Permission::declare_permissions()`). It **fails closed**: an unknown or mistyped code gates the transition to
+administrators only, never opens it up.
+
+### Use
+
+```php
+// Render status buttons for whoever is logged in (defaults to the current user):
+foreach ($order->permittedTransitions() as $t) {
+    // $t = ['name' => ..., 'from' => ..., 'to' => ..., 'permission' => 'SHOP_CANCEL_ORDERS'|null]
+    // draw a button that fires $t['name'] / moves to $t['to']
+}
+
+// Or check a specific member / a specific change:
+OrderWorkflowService::singleton()->permittedTransitions($order, $member);
+OrderWorkflowService::singleton()->permitsChange($order, 'Paid', 'AdminCancelled', 'admin_cancel', $member);
+```
+
+`permitsChange()` answers "may this member make this change?" taking both the graph and the permission into account;
+when several transitions reach the same target the member needs satisfy only one of them. An **off-graph** change is
+not blocked here on permission grounds — the graph check (strict mode) owns that decision.
+
+> Permissions describe *who may* fire a transition; they do not replace strict mode (*which* transitions are legal).
+> Gating only narrows the veto further, so it is most useful with `strict: true`. In advisory mode the gate still
+> filters `permittedTransitions()` for the UI, but nothing is enforced on write.
 
 ## Licence
 

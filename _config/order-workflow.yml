@@ -14,9 +14,11 @@ SilverShop\OrderWorkflow\Workflow\OrderWorkflowService:
   # dropdown and the core migration tasks, so it is opt-in.
   strict: false
   log_transitions: true
-  # name => { from: <place|[places]>, to: <place> }. Places are the Order.Status
-  # enum values, resolved at runtime. Names align with core's setStatus() intents
-  # where they overlap (placed_unpaid / placed_paid / payment_received / member_cancel).
+  # name => { from: <place|[places]>, to: <place>, permission?: <code> }. Places are the Order.Status
+  # enum values, resolved at runtime. Names align with core's setStatus() intents where they overlap
+  # (placed_unpaid / placed_paid / payment_received / member_cancel). An optional `permission` code gates
+  # the transition: it is hidden from permittedTransitions() for members without it, and (in strict mode)
+  # the veto blocks it. Ungated by default; e.g. add `permission: 'SHOP_CANCEL_ORDERS'` to admin_cancel.
   transitions:
     placed_unpaid:
       from: 'Cart'

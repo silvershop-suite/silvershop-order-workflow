@@ -7,6 +7,9 @@ namespace SilverShop\OrderWorkflow\Workflow;
 use SilverShop\Model\Order;
 use SilverStripe\Core\Config\Configurable;
 use SilverStripe\Core\Injector\Injectable;
+use SilverStripe\Security\Member;
+use SilverStripe\Security\Permission;
+use SilverStripe\Security\Security;
 use Symfony\Component\Workflow\Definition;
 use Symfony\Component\Workflow\StateMachine;
 use Symfony\Component\Workflow\Transition;
@@ -100,7 +103,11 @@ class OrderWorkflowService
      * strict mode these are the ONLY status changes the veto permits; in advisory mode they are the graph's
      * suggested next steps (an off-graph change still goes through, just logged as off-graph).
      *
-     * @return array<int,array{name:string,from:string,to:string}>
+     * Each entry carries the transition's optional `permission` code (null when ungated); this is the full
+     * graph-enabled set regardless of who is viewing. For the subset the current member may actually fire, use
+     * {@link permittedTransitions()}.
+     *
+     * @return array<int,array{name:string,from:string,to:string,permission:string|null}>
      */
     public function enabledTransitions(Order $order): array
     {
@@ -111,12 +118,99 @@ class OrderWorkflowService
 
         $out = [];
         foreach ($this->getStateMachine()->getEnabledTransitions($order) as $transition) {
+            $name = $transition->getName();
             foreach ($transition->getTos() as $to) {
-                $out[] = ['name' => $transition->getName(), 'from' => $from, 'to' => (string) $to];
+                $out[] = [
+                    'name' => $name,
+                    'from' => $from,
+                    'to' => (string) $to,
+                    'permission' => $this->permissionFor($name),
+                ];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * The transitions from an order's current Status that the given member (default: the current user) is actually
+     * allowed to fire — {@link enabledTransitions()} minus any whose `permission` the member lacks. This is what a UI
+     * should render status buttons from, so a member never sees an action they cannot perform.
+     *
+     * @return array<int,array{name:string,from:string,to:string,permission:string|null}>
+     */
+    public function permittedTransitions(Order $order, ?Member $member = null): array
+    {
+        $member ??= Security::getCurrentUser();
+
+        return array_values(array_filter(
+            $this->enabledTransitions($order),
+            fn (array $transition): bool => $this->memberMayFire($transition['permission'], $member)
+        ));
+    }
+
+    /**
+     * Whether $member may fire the change $from -> $to (optional intent $name), taking BOTH the graph and per-transition
+     * permissions into account. Used by the strict-mode veto. An off-graph change (no matching enabled transition) is
+     * not blocked on permission grounds here — the graph check in {@link allows()} owns that decision. When several
+     * transitions reach $to, the member needs to satisfy only one of them (the most permissive route wins).
+     */
+    public function permitsChange(Order $order, string $from, string $to, ?string $name = null, ?Member $member = null): bool
+    {
+        $member ??= Security::getCurrentUser();
+
+        $matching = array_filter(
+            $this->enabledTransitions($order),
+            function (array $transition) use ($to, $name): bool {
+                if ($transition['to'] !== $to) {
+                    return false;
+                }
+
+                return $name === null || $name === '' || $transition['name'] === $name;
+            }
+        );
+
+        if ($matching === []) {
+            return true;
+        }
+
+        foreach ($matching as $transition) {
+            if ($this->memberMayFire($transition['permission'], $member)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The permission code gating a transition by name, or null when it is ungated. Read from the transition's optional
+     * `permission` config key.
+     */
+    public function permissionFor(string $name): ?string
+    {
+        $transitions = (array) static::config()->get('transitions');
+        $def = $transitions[$name] ?? null;
+        if (!is_array($def)) {
+            return null;
+        }
+
+        $permission = $def['permission'] ?? null;
+
+        return is_string($permission) && $permission !== '' ? $permission : null;
+    }
+
+    /**
+     * Whether a member satisfies a transition's permission requirement. An ungated transition ($permission null) is
+     * always firable; a gated one needs the code (an unknown/typo'd code therefore fails closed — nobody but admins).
+     */
+    private function memberMayFire(?string $permission, ?Member $member): bool
+    {
+        if ($permission === null) {
+            return true;
+        }
+
+        return Permission::check($permission, 'any', $member) !== false;
     }
 
     private function buildDefinition(): Definition

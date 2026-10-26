@@ -8,6 +8,7 @@ use SilverShop\Model\Order;
 use SilverShop\OrderWorkflow\Model\OrderTransitionLog;
 use SilverShop\OrderWorkflow\Workflow\OrderWorkflowService;
 use SilverStripe\Core\Extension;
+use SilverStripe\Security\Member;
 use SilverStripe\Security\Security;
 
 /**
@@ -52,7 +53,17 @@ class OrderWorkflowExtension extends Extension
             return null;
         }
 
-        return OrderWorkflowService::singleton()->allows($order, (string) $from, (string) $to) ? null : false;
+        $service = OrderWorkflowService::singleton();
+
+        // Strict mode enforces BOTH the graph edge and the transition's optional permission.
+        if (!$service->allows($order, (string) $from, (string) $to)) {
+            return false;
+        }
+        if (!$service->permitsChange($order, (string) $from, (string) $to, is_string($name) ? $name : null)) {
+            return false;
+        }
+
+        return null;
     }
 
     /**
@@ -89,14 +100,26 @@ class OrderWorkflowExtension extends Extension
     }
 
     /**
-     * The transitions enabled from this order's current Status — the single source a consumer (e.g. order-admin's
-     * status buttons) renders the allowed next steps from. Delegates to
-     * {@link OrderWorkflowService::enabledTransitions()}.
+     * The transitions enabled from this order's current Status — the full graph-enabled set, each annotated with its
+     * optional `permission`. Delegates to {@link OrderWorkflowService::enabledTransitions()}.
      *
-     * @return array<int,array{name:string,from:string,to:string}>
+     * @return array<int,array{name:string,from:string,to:string,permission:string|null}>
      */
     public function enabledTransitions(): array
     {
         return OrderWorkflowService::singleton()->enabledTransitions($this->getOwner());
+    }
+
+    /**
+     * The transitions the given member (default: the current user) may actually fire — {@link enabledTransitions()}
+     * minus any gated behind a permission the member lacks. This is the list a CMS status-button row should render.
+     * Delegates to {@link OrderWorkflowService::permittedTransitions()}.
+     *
+     * @param Member|null $member
+     * @return array<int,array{name:string,from:string,to:string,permission:string|null}>
+     */
+    public function permittedTransitions(?Member $member = null): array
+    {
+        return OrderWorkflowService::singleton()->permittedTransitions($this->getOwner(), $member);
     }
 }
