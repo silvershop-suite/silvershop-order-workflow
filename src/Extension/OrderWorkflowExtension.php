@@ -87,4 +87,16 @@ class OrderWorkflowExtension extends Extension
         }
         $log->write();
     }
+
+    /**
+     * The transitions enabled from this order's current Status — the single source a consumer (e.g. order-admin's
+     * status buttons) renders the allowed next steps from. Delegates to
+     * {@link OrderWorkflowService::enabledTransitions()}.
+     *
+     * @return array<int,array{name:string,from:string,to:string}>
+     */
+    public function enabledTransitions(): array
+    {
+        return OrderWorkflowService::singleton()->enabledTransitions($this->getOwner());
+    }
 }

@@ -62,4 +62,34 @@ class OrderWorkflowServiceTest extends SapphireTest
         $order->setField('Status', '');
         $this->assertTrue($service->allows($order, '', 'Cart'), 'unknown origin is allowed (cannot be validated)');
     }
+
+    public function testEnabledTransitionsFromAStatus(): void
+    {
+        $service = OrderWorkflowService::singleton();
+
+        $order = Order::create();
+        $order->setField('Status', 'Paid');
+
+        $names = array_column($service->enabledTransitions($order), 'name');
+        sort($names);
+        // From 'Paid' the graph enables process (→Processing), send (→Sent), admin_cancel, member_cancel.
+        $this->assertSame(['admin_cancel', 'member_cancel', 'process', 'send'], $names);
+
+        foreach ($service->enabledTransitions($order) as $transition) {
+            $this->assertSame('Paid', $transition['from']);
+            $this->assertNotSame('', $transition['to']);
+        }
+    }
+
+    public function testEnabledTransitionsEmptyForTerminalOrUnknownStatus(): void
+    {
+        $service = OrderWorkflowService::singleton();
+
+        $order = Order::create();
+        $order->setField('Status', 'Complete');
+        $this->assertSame([], $service->enabledTransitions($order), 'Complete is terminal → no enabled transitions');
+
+        $order->setField('Status', '');
+        $this->assertSame([], $service->enabledTransitions($order), 'blank status → none enabled');
+    }
 }

@@ -91,6 +91,34 @@ class OrderWorkflowService
         return false;
     }
 
+    /**
+     * The transitions enabled from an order's current Status — the single declarative source a UI renders the
+     * allowed next steps from (e.g. order-admin's status buttons), read straight from the config graph via the
+     * state machine. Each entry: ['name' => <transition>, 'from' => <current place>, 'to' => <target place>].
+     *
+     * Empty when the order's Status is unknown/empty or the graph defines no outgoing transition from it. In
+     * strict mode these are the ONLY status changes the veto permits; in advisory mode they are the graph's
+     * suggested next steps (an off-graph change still goes through, just logged as off-graph).
+     *
+     * @return array<int,array{name:string,from:string,to:string}>
+     */
+    public function enabledTransitions(Order $order): array
+    {
+        $from = (string) $order->Status;
+        if ($from === '' || !in_array($from, $this->getPlaces(), true)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->getStateMachine()->getEnabledTransitions($order) as $transition) {
+            foreach ($transition->getTos() as $to) {
+                $out[] = ['name' => $transition->getName(), 'from' => $from, 'to' => (string) $to];
+            }
+        }
+
+        return $out;
+    }
+
     private function buildDefinition(): Definition
     {
         $transitions = [];
