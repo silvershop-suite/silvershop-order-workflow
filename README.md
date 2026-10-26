@@ -34,6 +34,22 @@ SilverShop\OrderWorkflow\Workflow\OrderWorkflowService:
     # ...
 ```
 
+## Reading the graph
+
+Expose the graph's valid next steps for an order — the single declarative source a UI (e.g. a CMS
+status-button row) renders from, instead of hard-coding which status follows which:
+
+```php
+$order->enabledTransitions();                                            // via the Order extension
+OrderWorkflowService::singleton()->enabledTransitions($order);           // or the service directly
+```
+
+Returns the transitions enabled from the order's current `Status`, each as
+`['name' => <transition>, 'from' => <current status>, 'to' => <target status>]` — e.g. from `Paid`:
+`process → Processing`, `send → Sent`, `admin_cancel`, `member_cancel`. Empty for a terminal or unknown
+status. In strict mode these are the only changes the veto permits; in advisory mode they are the graph's
+suggested next steps (an off-graph change still goes through, just logged as off-graph).
+
 ## Licence
 
 BSD-3-Clause © 2026 Remy Vaartjes.

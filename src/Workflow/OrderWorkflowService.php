@@ -123,7 +123,13 @@ class OrderWorkflowService
     {
         $transitions = [];
         foreach (static::config()->get('transitions') as $name => $def) {
-            $transitions[] = new Transition((string) $name, $def['from'], $def['to']);
+            // A StateMachine carries a single marking, so a Transition with several `from`
+            // places would need the order to occupy all of them at once (Petri-net AND) and
+            // could never fire. Expand each `from` into its own same-named Transition; the
+            // StateMachine resolves same-named transitions by the one whose `from` matches.
+            foreach ((array) $def['from'] as $from) {
+                $transitions[] = new Transition((string) $name, (string) $from, (string) $def['to']);
+            }
         }
 
         return new Definition($this->getPlaces(), $transitions);
