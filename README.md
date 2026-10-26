@@ -20,6 +20,8 @@ derived from the status enum at runtime, transitions come from config.
 - `silverstripe/framework` ^6, `silvershop/core` ^6.2 (with the `Order::setStatus()` funnel /
   `onBeforeStatusChange` hook)
 - `symfony/workflow` ^7.4
+- `symbiote/silverstripe-queuedjobs` ^6 (drives the recurring sweep for [Scheduled transitions](#scheduled-transitions);
+  the rest of the module works without a job worker)
 
 ## Configuration
 
@@ -49,6 +51,86 @@ Returns the transitions enabled from the order's current `Status`, each as
 `process → Processing`, `send → Sent`, `admin_cancel`, `member_cancel`. Empty for a terminal or unknown
 status. In strict mode these are the only changes the veto permits; in advisory mode they are the graph's
 suggested next steps (an off-graph change still goes through, just logged as off-graph).
+
+## Scheduled transitions
+
+Move orders on **automatically** once they have sat in a status for a configured length of time — the lifecycle jobs
+every shop needs:
+
+- **auto-cancel** an order left `Unpaid` for N days (release stock, stop chasing it),
+- **auto-complete** a `Sent` order after the return window,
+- **dunning** / staged follow-ups, or any "after N days in status X, go to Y".
+
+**Why route it through the module instead of a bespoke cron script?** Each scheduled move is fired through core's
+`Order::setStatus()` — exactly like a human changing the status in the CMS — so everything downstream lights up for
+free and stays consistent: the immutable `OrderTransitionLog` entry is written, `silvershop-order-notifications` sends
+the customer the matching status email, and `silvershop-suite/ledger` posts. A hand-rolled `UPDATE Order SET Status`
+would silently skip all three. And because each rule names a real transition in the graph above, **strict mode still
+guards it** — a scheduled move that is not a legal edge is vetoed just like a manual one.
+
+### Configure the rules
+
+Rules are opt-in — none are defined by default. Add them under the service:
+
+```yaml
+SilverShop\OrderWorkflow\Service\ScheduledTransitionService:
+  scheduled_transitions:
+    cancel_unpaid:
+      from: 'Unpaid'            # the status the order must currently be in
+      to: 'AdminCancelled'      # where to move it
+      transition: 'admin_cancel' # transition name recorded on the log (optional; defaults to the rule key)
+      after: '+14 days'         # how long it must have been in `from` (any strtotime duration: '+48 hours', '+2 weeks', …)
+    auto_complete:
+      from: 'Sent'
+      to: 'Complete'
+      transition: 'complete'
+      after: '+7 days'
+```
+
+Keep each `from → to` a real edge in `$transitions` (above) so strict mode permits it; in advisory mode any pair fires
+(and is logged as off-graph). Invalid rules — an unknown status, `from === to`, an unparseable `after` — are skipped
+rather than fatal.
+
+**How "time in status" is measured:** from the most recent transition *into* `from`, read from the `OrderTransitionLog`
+(so a re-opened order is timed from when it re-entered the status, not from when it was created). With no log yet
+(logging disabled, or a pre-funnel order) it falls back to the order's creation time — so leave `log_transitions` on
+(the default) for accurate timing.
+
+### Run it
+
+Two interchangeable ways — pick whichever your hosting uses:
+
+**A recurring queued job** (needs a running `queuedjobs` worker). Arm it once; it re-queues itself every
+`scan_interval_mins` (default 60) and shows up in *QueuedJobAdmin*:
+
+```bash
+# one-off, to start the recurring sweep
+vendor/bin/sake tasks:SilverShop-OrderWorkflow-Task-ScheduledTransitionsTask --schedule
+```
+
+**A plain cron task** (no worker needed) — the same sweep on demand. Dry-run by default (lists each rule and how many
+orders are due); `--run` actually fires them:
+
+```bash
+# see what WOULD happen
+vendor/bin/sake tasks:SilverShop-OrderWorkflow-Task-ScheduledTransitionsTask
+# fire the due transitions now (e.g. from a nightly cron)
+vendor/bin/sake tasks:SilverShop-OrderWorkflow-Task-ScheduledTransitionsTask --run
+```
+
+### Tuning & safety
+
+```yaml
+SilverShop\OrderWorkflow\Service\ScheduledTransitionService:
+  batch_size: 100          # max orders advanced per rule per sweep (most-overdue first; the rest wait for the next run)
+SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
+  scan_interval_mins: 60   # minutes between recurring sweeps
+```
+
+The sweep is **idempotent** — it only ever touches orders *still* in `from`, so re-running it (or running the job and
+the cron task together) can never double-fire. Like the rest of the module it is **dormant** until core's
+`setStatus()` funnel (#928) ships: without it the sweep fires nothing and the task says so, rather than writing a raw
+status that would bypass the log, notifications and ledger.
 
 ## Licence
 

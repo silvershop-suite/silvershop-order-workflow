@@ -19,7 +19,8 @@
         "silverstripe/framework": "^6",
         "silverstripe/cms": "^6",
         "silvershop/core": "^6.2",
-        "symfony/workflow": "^7.4"
+        "symfony/workflow": "^7.4",
+        "symbiote/silverstripe-queuedjobs": "^6.0"
     },
     "require-dev": {
         "cambis/silverstan": "^2.1",

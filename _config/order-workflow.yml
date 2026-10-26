@@ -42,3 +42,26 @@ SilverShop\OrderWorkflow\Workflow\OrderWorkflowService:
     member_cancel:
       from: ['Cart', 'Unpaid', 'Paid']
       to: 'MemberCancelled'
+
+SilverShop\OrderWorkflow\Service\ScheduledTransitionService:
+  # Max orders advanced per rule per sweep (bounds one job run).
+  batch_size: 100
+  # Time-based transitions. OFF until you add rules. Each: from/to (Order.Status places), `after`
+  # (a strtotime duration measured from when the order entered `from`) and an optional `transition`
+  # name (defaults to the rule key). Fired through Order::setStatus(), so the log + notifications +
+  # ledger all run. Keep (from -> to) a real edge above so strict mode permits it.
+  # scheduled_transitions:
+  #   cancel_unpaid:
+  #     from: 'Unpaid'
+  #     to: 'AdminCancelled'
+  #     transition: 'admin_cancel'
+  #     after: '+14 days'
+  #   auto_complete:
+  #     from: 'Sent'
+  #     to: 'Complete'
+  #     transition: 'complete'
+  #     after: '+7 days'
+
+SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
+  # Minutes between recurring sweeps.
+  scan_interval_mins: 60
