@@ -20,7 +20,9 @@ use SilverStripe\Security\Security;
  *    veto a transition the graph forbids; in advisory mode it only records the
  *    intent (so the audit log can attach the transition name).
  *  - onStatusChange($from, $to): fired at write time by Order::statusTransition().
- *    Writes the immutable transition log.
+ *    Writes the immutable transition log, unless core already audits transitions
+ *    itself (silvershop/core 6.3+ `OrderTransition`), in which case core's record is
+ *    the audit trail and nothing is written here (no double logging).
  *
  * @extends Extension<Order>
  */
@@ -76,7 +78,9 @@ class OrderWorkflowExtension extends Extension
         $pending = $this->pending[spl_object_id($order)] ?? null;
         unset($this->pending[spl_object_id($order)]);
 
-        if (!OrderWorkflowService::config()->get('log_transitions')) {
+        // Core 6.3+ already writes a structured OrderTransition for this change (with the same
+        // from/to/name/member); writing our own as well would record every transition twice.
+        if (!OrderWorkflowService::config()->get('log_transitions') || OrderWorkflowService::coreAuditsTransitions()) {
             return;
         }
 

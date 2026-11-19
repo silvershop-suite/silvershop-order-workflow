@@ -9,6 +9,7 @@ use SilverShop\OrderWorkflow\Model\OrderTransitionLog;
 use SilverShop\OrderWorkflow\Workflow\OrderWorkflowService;
 use SilverStripe\Core\Config\Configurable;
 use SilverStripe\Core\Injector\Injectable;
+use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\FieldType\DBDatetime;
 
 /**
@@ -16,7 +17,8 @@ use SilverStripe\ORM\FieldType\DBDatetime;
  * for a configured duration — auto-cancel an order left Unpaid for N days, auto-complete a Sent order, dunning, etc.
  *
  * The transition is fired through core's {@link Order::setStatus()} funnel (silvershop/core #928), exactly like a
- * manual change, so the whole lifecycle lights up for free: the {@link OrderTransitionLog} audit entry, status
+ * manual change, so the whole lifecycle lights up for free: the audit entry (core's OrderTransition on 6.3+, else the
+ * module's {@link OrderTransitionLog}), status
  * notifications (silvershop-order-notifications) and ledger posting all happen without this module knowing about them.
  *
  * Opt-in: no rules are configured by default. The recurring {@link \SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob}
@@ -169,18 +171,41 @@ class ScheduledTransitionService
     }
 
     /**
-     * When the order most recently entered `$from`: the newest transition INTO that status, falling back to the order's
-     * creation time when there is no log (logging off, or a pre-funnel order). Accurate timing therefore relies on
-     * log_transitions (on by default).
+     * When the order most recently entered `$from`: the newest transition INTO that status across every audit trail
+     * that may hold it, falling back to the order's creation time when there is none (logging off, or a pre-funnel
+     * order). Both trails are read because a site that ran this module on a pre-6.3 core has its older transitions in
+     * OrderTransitionLog and, after upgrading, its newer ones in core's OrderTransition.
      */
     private function enteredFromAt(Order $order, string $from): string
     {
-        $log = OrderTransitionLog::get()
-            ->filter(['OrderID' => $order->ID, 'ToStatus' => $from])
-            ->sort('Created', 'DESC')
-            ->first();
+        $latest = '';
+        foreach ($this->auditTrailClasses() as $class) {
+            $entry = DataObject::get($class)
+                ->filter(['OrderID' => $order->ID, 'ToStatus' => $from])
+                ->sort('Created', 'DESC')
+                ->first();
+            $created = $entry ? (string) $entry->Created : '';
+            if ($created > $latest) {
+                $latest = $created;
+            }
+        }
 
-        return $log && $log->Created ? (string) $log->Created : (string) $order->Created;
+        return $latest !== '' ? $latest : (string) $order->Created;
+    }
+
+    /**
+     * The audit-trail record classes present: always the module's own, plus core's when core ships it (6.3+).
+     *
+     * @return array<int,string>
+     */
+    private function auditTrailClasses(): array
+    {
+        $classes = [OrderTransitionLog::class];
+        if (class_exists(OrderWorkflowService::CORE_AUDIT_CLASS)) {
+            $classes[] = OrderWorkflowService::CORE_AUDIT_CLASS;
+        }
+
+        return $classes;
     }
 
     /**

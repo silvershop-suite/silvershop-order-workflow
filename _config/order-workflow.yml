@@ -13,6 +13,8 @@ SilverShop\OrderWorkflow\Workflow\OrderWorkflowService:
   # before the write). Strict mode intentionally constrains the free CMS status
   # dropdown and the core migration tasks, so it is opt-in.
   strict: false
+  # Module's own OrderTransitionLog. Only written while core is NOT auditing transitions itself
+  # (silvershop/core 6.3+ records them in OrderTransition by default), so nothing is logged twice.
   log_transitions: true
   # name => { from: <place|[places]>, to: <place>, permission?: <code> }. Places are the Order.Status
   # enum values, resolved at runtime. Names align with core's setStatus() intents where they overlap

@@ -7,8 +7,10 @@ namespace SilverShop\OrderWorkflow\Tests;
 use SilverShop\Model\Order;
 use SilverShop\OrderWorkflow\Model\OrderTransitionLog;
 use SilverShop\OrderWorkflow\Service\ScheduledTransitionService;
+use SilverShop\OrderWorkflow\Workflow\OrderWorkflowService;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Dev\SapphireTest;
+use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\FieldType\DBDatetime;
 
 /**
@@ -61,6 +63,29 @@ class ScheduledTransitionServiceTest extends SapphireTest
         DBDatetime::clear_mock_now();
     }
 
+    /**
+     * An entry in core's own audit trail (silvershop/core 6.3+), as core writes on a real status change.
+     */
+    private function coreEntry(Order $order, string $from, string $to, string $at): void
+    {
+        $class = OrderWorkflowService::CORE_AUDIT_CLASS;
+        DBDatetime::set_mock_now($at);
+        /** @var DataObject $entry */
+        $entry = $class::create();
+        $entry->OrderID = $order->ID;
+        $entry->FromStatus = $from;
+        $entry->ToStatus = $to;
+        $entry->write();
+        DBDatetime::clear_mock_now();
+    }
+
+    private function requireCoreAuditTrail(): void
+    {
+        if (!class_exists(OrderWorkflowService::CORE_AUDIT_CLASS)) {
+            $this->markTestSkipped('Requires core\'s OrderTransition audit trail (silvershop/core 6.3+).');
+        }
+    }
+
     public function testRulesDropInvalidAndDefaultTransitionName(): void
     {
         Config::modify()->set(ScheduledTransitionService::class, 'scheduled_transitions', [
@@ -107,6 +132,42 @@ class ScheduledTransitionServiceTest extends SapphireTest
         $this->assertNotContains((int) $fresh->ID, $dueIds, 'created 2 days ago -> not due');
     }
 
+    public function testDueDetectionReadsCoreAuditTrail(): void
+    {
+        $this->requireCoreAuditTrail();
+        $rule = ['from' => 'Sent', 'to' => 'Complete', 'after' => '+14 days', 'transition' => 'complete'];
+
+        // Created 30 days ago, but core recorded it entering Sent only 2 days ago. With core's trail ignored the
+        // fallback (Created) would make it due and auto-complete it 12 days early.
+        $order = $this->orderInStatusSince('Sent', date('Y-m-d H:i:s', strtotime('-30 days')), false);
+        $this->coreEntry($order, 'Processing', 'Sent', date('Y-m-d H:i:s', strtotime('-2 days')));
+
+        $dueIds = array_map(static fn (Order $o): int => (int) $o->ID, $this->service()->dueOrders($rule));
+
+        $this->assertNotContains((int) $order->ID, $dueIds, 'entered Sent 2 days ago per core\'s trail -> not due');
+    }
+
+    public function testDueDetectionUsesNewestEntryAcrossBothTrails(): void
+    {
+        $this->requireCoreAuditTrail();
+        $rule = ['from' => 'Sent', 'to' => 'Complete', 'after' => '+14 days', 'transition' => 'complete'];
+
+        // A site upgraded mid-life: an older entry in one trail, a newer one in the other. The newest wins, whichever
+        // trail holds it.
+        $newerInModule = $this->orderInStatusSince('Sent', date('Y-m-d H:i:s', strtotime('-30 days')), false);
+        $this->coreEntry($newerInModule, 'Processing', 'Sent', date('Y-m-d H:i:s', strtotime('-20 days')));
+        $this->logEntry($newerInModule, 'Processing', 'Sent', date('Y-m-d H:i:s', strtotime('-2 days')));
+
+        $newerInCore = $this->orderInStatusSince('Sent', date('Y-m-d H:i:s', strtotime('-30 days')), false);
+        $this->logEntry($newerInCore, 'Processing', 'Sent', date('Y-m-d H:i:s', strtotime('-20 days')));
+        $this->coreEntry($newerInCore, 'Processing', 'Sent', date('Y-m-d H:i:s', strtotime('-2 days')));
+
+        $dueIds = array_map(static fn (Order $o): int => (int) $o->ID, $this->service()->dueOrders($rule));
+
+        $this->assertNotContains((int) $newerInModule->ID, $dueIds, 'newest entry is in the module log -> not due');
+        $this->assertNotContains((int) $newerInCore->ID, $dueIds, 'newest entry is in core\'s trail -> not due');
+    }
+
     public function testDormantSweepFiresNothing(): void
     {
         $service = $this->service();
@@ -130,7 +191,7 @@ class ScheduledTransitionServiceTest extends SapphireTest
     {
         $service = $this->service();
         if ($service->isDormant()) {
-            $this->markTestSkipped('Requires the silvershop/core Order::setStatus() funnel (#928, unreleased).');
+            $this->markTestSkipped('Requires the silvershop/core Order::setStatus() funnel (core 6.3+).');
         }
 
         Config::modify()->set(ScheduledTransitionService::class, 'scheduled_transitions', [
@@ -144,10 +205,21 @@ class ScheduledTransitionServiceTest extends SapphireTest
         $this->assertSame(1, $result['transitioned']);
         $this->assertSame('AdminCancelled', (string) Order::get()->byID($order->ID)->Status, 'order was cancelled');
 
-        $log = OrderTransitionLog::get()
+        // Recorded once, in whichever trail is active: core's OrderTransition on 6.3+, else the module's log.
+        $active = OrderWorkflowService::coreAuditsTransitions()
+            ? OrderWorkflowService::CORE_AUDIT_CLASS
+            : OrderTransitionLog::class;
+        $log = DataObject::get($active)
             ->filter(['OrderID' => $order->ID, 'ToStatus' => 'AdminCancelled'])
             ->first();
         $this->assertNotNull($log, 'the auto-transition was logged');
         $this->assertSame('admin_cancel', $log->TransitionName, 'logged with the configured transition name');
+        if (OrderWorkflowService::coreAuditsTransitions()) {
+            $this->assertSame(
+                0,
+                OrderTransitionLog::get()->filter(['OrderID' => $order->ID, 'ToStatus' => 'AdminCancelled'])->count(),
+                'core audits it, so the module does not log it a second time'
+            );
+        }
     }
 }

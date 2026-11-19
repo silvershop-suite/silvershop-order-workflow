@@ -33,8 +33,18 @@ class OrderWorkflowService
     private static bool $strict = false;
 
     /**
+     * Core's own structured audit record (silvershop/core 6.3+, written by Order when
+     * `audit_status_transitions` is on). Referenced by name so this module still loads
+     * and analyses against a core that predates it.
+     */
+    public const CORE_AUDIT_CLASS = 'SilverShop\\Model\\OrderTransition';
+
+    /**
      * When true, every persisted status change is recorded as an immutable
-     * {@link \SilverShop\OrderWorkflow\Model\OrderTransitionLog}.
+     * {@link \SilverShop\OrderWorkflow\Model\OrderTransitionLog} — but only while
+     * core is NOT already recording it (see {@link coreAuditsTransitions()}). On
+     * silvershop/core 6.3+ core's `OrderTransition` is the audit trail and the
+     * module's log stays silent, so a transition is never recorded twice.
      */
     private static bool $log_transitions = true;
 
@@ -46,6 +56,18 @@ class OrderWorkflowService
     private static array $transitions = [];
 
     private ?StateMachine $machine = null;
+
+    /**
+     * Is core itself recording every status transition? True on silvershop/core 6.3+
+     * with `Order.audit_status_transitions` left on (the default). When it is, core's
+     * `OrderTransition` is the single source of truth and the module does not write its
+     * own {@link \SilverShop\OrderWorkflow\Model\OrderTransitionLog}.
+     */
+    public static function coreAuditsTransitions(): bool
+    {
+        return class_exists(self::CORE_AUDIT_CLASS)
+            && (bool) Order::config()->get('audit_status_transitions');
+    }
 
     public function getStateMachine(): StateMachine
     {

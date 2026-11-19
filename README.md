@@ -4,9 +4,10 @@ Formalises the SilverShop order lifecycle as a [Symfony Workflow](https://symfon
 **state machine** over the existing `Order.Status` enum — no new status storage, no change to the eight
 core statuses.
 
-- **Advisory by default.** It observes every status transition and records it as an immutable
-  `OrderTransitionLog` (from → to, the transition *name*/intent, the acting member, the timestamp). This is
-  the audit trail that feeds `silvershop-suite/ledger`.
+- **Advisory by default.** It observes every status transition, and makes sure each one is recorded exactly
+  once as an immutable audit record (from → to, the transition *name*/intent, the acting member, the
+  timestamp). This is the audit trail that feeds `silvershop-suite/ledger`. See [Audit trail](#audit-trail)
+  for which table holds it.
 - **Opt-in strict mode.** Set `strict: true` and the module enforces the configured transition graph:
   an illegal transition is **vetoed before the write** (via core's `onBeforeStatusChange` hook). The free
   CMS status dropdown and the core migration tasks are intentionally constrained by strict mode, so it is
@@ -28,13 +29,27 @@ derived from the status enum at runtime, transitions come from config.
 ```yaml
 SilverShop\OrderWorkflow\Workflow\OrderWorkflowService:
   strict: false          # true = enforce the graph (veto illegal transitions)
-  log_transitions: true  # write an OrderTransitionLog per transition
+  log_transitions: true  # write an OrderTransitionLog per transition (only while core is not auditing, see below)
   transitions:
     process:
       from: 'Paid'
       to: 'Processing'
     # ...
 ```
+
+## Audit trail
+
+Every transition is recorded **once**, never twice:
+
+| Core | Records each transition in |
+| --- | --- |
+| `silvershop/core` 6.3+ with `Order.audit_status_transitions: true` (core's default) | core's own `SilverShop\Model\OrderTransition` (`$order->StatusTransitions()`). The module writes nothing. |
+| `silvershop/core` 6.3+ with `audit_status_transitions: false` | the module's `OrderTransitionLog`, if `log_transitions` is on |
+| `silvershop/core` older than 6.3 (no `OrderTransition`) | the module's `OrderTransitionLog`, if `log_transitions` is on |
+
+Both tables have the same columns. To record nothing at all (for example around a bulk status migration), turn off
+both `Order.audit_status_transitions` and `log_transitions`. Existing `OrderTransitionLog` rows from before an upgrade
+to core 6.3 are kept and still count for [scheduled-transition timing](#scheduled-transitions).
 
 ## Reading the graph
 
@@ -67,7 +82,7 @@ every shop needs:
 
 **Why route it through the module instead of a bespoke cron script?** Each scheduled move is fired through core's
 `Order::setStatus()` — exactly like a human changing the status in the CMS — so everything downstream lights up for
-free and stays consistent: the immutable `OrderTransitionLog` entry is written, `silvershop-order-notifications` sends
+free and stays consistent: the immutable [audit record](#audit-trail) is written, `silvershop-order-notifications` sends
 the customer the matching status email, and `silvershop-suite/ledger` posts. A hand-rolled `UPDATE Order SET Status`
 would silently skip all three. And because each rule names a real transition in the graph above, **strict mode still
 guards it** — a scheduled move that is not a legal edge is vetoed just like a manual one.
@@ -95,10 +110,11 @@ Keep each `from → to` a real edge in `$transitions` (above) so strict mode per
 (and is logged as off-graph). Invalid rules — an unknown status, `from === to`, an unparseable `after` — are skipped
 rather than fatal.
 
-**How "time in status" is measured:** from the most recent transition *into* `from`, read from the `OrderTransitionLog`
-(so a re-opened order is timed from when it re-entered the status, not from when it was created). With no log yet
-(logging disabled, or a pre-funnel order) it falls back to the order's creation time — so leave `log_transitions` on
-(the default) for accurate timing.
+**How "time in status" is measured:** from the most recent transition *into* `from`, read from the
+[audit trail](#audit-trail): the newest entry across core's `OrderTransition` and the module's `OrderTransitionLog`
+(so a re-opened order is timed from when it re-entered the status, not from when it was created, and a site that
+upgraded core mid-life keeps its older entries). With no record at all (logging disabled, or a pre-funnel order) it
+falls back to the order's creation time, so leave the audit trail on (the default) for accurate timing.
 
 ### Run it
 
