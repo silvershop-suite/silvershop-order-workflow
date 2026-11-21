@@ -1,0 +1,11 @@
+en:
+  SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
+    TITLE: 'Fire scheduled order transitions'
+  SilverShop\OrderWorkflow\Model\OrderTransitionLog:
+    SINGULARNAME: 'Status transition'
+    PLURALNAME: 'Status transitions'
+    db_FromStatus: 'From status'
+    db_ToStatus: 'To status'
+    db_TransitionName: 'Transition'
+    has_one_Order: 'Order'
+    has_one_Member: 'Changed by'

@@ -1,0 +1,11 @@
+fr:
+  SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
+    TITLE: 'Exécuter les changements de statut de commande planifiés'
+  SilverShop\OrderWorkflow\Model\OrderTransitionLog:
+    SINGULARNAME: 'Changement de statut'
+    PLURALNAME: 'Changements de statut'
+    db_FromStatus: 'Ancien statut'
+    db_ToStatus: 'Nouveau statut'
+    db_TransitionName: 'Transition'
+    has_one_Order: 'Commande'
+    has_one_Member: 'Modifié par'

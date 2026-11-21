@@ -1,0 +1,11 @@
+nl:
+  SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
+    TITLE: 'Geplande statuswijzigingen van bestellingen uitvoeren'
+  SilverShop\OrderWorkflow\Model\OrderTransitionLog:
+    SINGULARNAME: 'Statuswijziging'
+    PLURALNAME: 'Statuswijzigingen'
+    db_FromStatus: 'Oude status'
+    db_ToStatus: 'Nieuwe status'
+    db_TransitionName: 'Overgang'
+    has_one_Order: 'Bestelling'
+    has_one_Member: 'Gewijzigd door'
