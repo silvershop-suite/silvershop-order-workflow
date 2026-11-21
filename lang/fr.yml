@@ -2,6 +2,7 @@ fr:
   SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
     TITLE: 'Exécuter les changements de statut de commande planifiés'
   SilverShop\OrderWorkflow\Model\OrderTransitionLog:
+    When: 'Quand'
     SINGULARNAME: 'Changement de statut'
     PLURALNAME: 'Changements de statut'
     db_FromStatus: 'Ancien statut'

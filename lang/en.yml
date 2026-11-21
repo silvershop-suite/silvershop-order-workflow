@@ -2,6 +2,7 @@ en:
   SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
     TITLE: 'Fire scheduled order transitions'
   SilverShop\OrderWorkflow\Model\OrderTransitionLog:
+    When: 'When'
     SINGULARNAME: 'Status transition'
     PLURALNAME: 'Status transitions'
     db_FromStatus: 'From status'

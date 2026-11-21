@@ -18,7 +18,7 @@
         "php": "^8.3",
         "silverstripe/framework": "^6",
         "silverstripe/cms": "^6",
-        "silvershop/core": "^6.2",
+        "silvershop/core": "^6.3",
         "symfony/workflow": "^7.4",
         "symbiote/silverstripe-queuedjobs": "^6.0"
     },

@@ -2,6 +2,7 @@ nl:
   SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
     TITLE: 'Geplande statuswijzigingen van bestellingen uitvoeren'
   SilverShop\OrderWorkflow\Model\OrderTransitionLog:
+    When: 'Wanneer'
     SINGULARNAME: 'Statuswijziging'
     PLURALNAME: 'Statuswijzigingen'
     db_FromStatus: 'Oude status'

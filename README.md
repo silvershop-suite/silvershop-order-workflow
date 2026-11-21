@@ -18,7 +18,7 @@ derived from the status enum at runtime, transitions come from config.
 
 ## Requirements
 
-- `silverstripe/framework` ^6, `silvershop/core` ^6.2 (with the `Order::setStatus()` funnel /
+- `silverstripe/framework` ^6, `silvershop/core` ^6.3 (the first release with the `Order::setStatus()` funnel /
   `onBeforeStatusChange` hook)
 - `symfony/workflow` ^7.4
 - `symbiote/silverstripe-queuedjobs` ^6 (drives the recurring sweep for [Scheduled transitions](#scheduled-transitions);

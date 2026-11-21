@@ -41,13 +41,25 @@ class OrderTransitionLog extends DataObject
 
     private static string $default_sort = 'ID DESC';
 
+    /**
+     * Values equal the field names so summaryFields() localises the column headings through fieldLabels().
+     */
     private static array $summary_fields = [
-        'Created' => 'When',
-        'FromStatus' => 'From',
-        'ToStatus' => 'To',
-        'TransitionName' => 'Transition',
-        'Member.Title' => 'By',
+        'Created' => 'Created',
+        'FromStatus' => 'FromStatus',
+        'ToStatus' => 'ToStatus',
+        'TransitionName' => 'TransitionName',
+        'Member.Title' => 'Member.Title',
     ];
+
+    public function fieldLabels($includerelations = true)
+    {
+        $labels = parent::fieldLabels($includerelations);
+        $labels['Created'] = _t(self::class . '.When', 'When');
+        $labels['Member.Title'] = $labels['Member'] ?? _t(self::class . '.has_one_Member', 'Changed by');
+
+        return $labels;
+    }
 
     public function canEdit($member = null): bool
     {
