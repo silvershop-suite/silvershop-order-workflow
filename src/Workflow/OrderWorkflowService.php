@@ -155,6 +155,24 @@ class OrderWorkflowService
     }
 
     /**
+     * The graph's name for moving an order from its current Status to $to: the transition name when exactly one
+     * enabled transition leads there, otherwise null (off-graph, or ambiguous). Used to name status changes whose
+     * caller gave no name (the CMS status dropdown, order-admin buttons, checkout), so the audit trail always says
+     * which transition happened.
+     */
+    public function transitionNameFor(Order $order, string $to): ?string
+    {
+        $names = [];
+        foreach ($this->enabledTransitions($order) as $transition) {
+            if ($transition['to'] === $to) {
+                $names[$transition['name']] = true;
+            }
+        }
+
+        return count($names) === 1 ? (string) array_key_first($names) : null;
+    }
+
+    /**
      * The transitions from an order's current Status that the given member (default: the current user) is actually
      * allowed to fire — {@link enabledTransitions()} minus any whose `permission` the member lacks. This is what a UI
      * should render status buttons from, so a member never sees an action they cannot perform.

@@ -63,16 +63,18 @@ class ScheduledTransitionsJob extends AbstractQueuedJob
 
         $this->isComplete = true;
 
-        // Re-arm the recurring sweep.
-        self::scheduleNext();
+        // Re-arm the recurring sweep. This job's own descriptor is still "running" here, so ignore running jobs:
+        // otherwise it would find itself and never queue the next sweep.
+        self::scheduleNext(true);
     }
 
     /**
-     * Schedule the next sweep `scan_interval_mins` from now, unless one is already queued/running.
+     * Schedule the next sweep `scan_interval_mins` from now, unless one is already queued (or, when not called from
+     * a running sweep, running).
      */
-    public static function scheduleNext(): void
+    public static function scheduleNext(bool $fromRunningJob = false): void
     {
-        if (self::isScheduled()) {
+        if (self::isScheduled($fromRunningJob)) {
             return;
         }
 
@@ -83,21 +85,19 @@ class ScheduledTransitionsJob extends AbstractQueuedJob
     }
 
     /**
-     * Whether a sweep job is already queued or running (so duplicates never pile up).
+     * Whether a sweep job is already queued (so duplicates never pile up). Running jobs count too, unless
+     * $ignoreRunning: a sweep re-arming itself from process() must not count its own running descriptor.
      */
-    public static function isScheduled(): bool
+    public static function isScheduled(bool $ignoreRunning = false): bool
     {
+        $statuses = [QueuedJob::STATUS_NEW, QueuedJob::STATUS_WAIT, QueuedJob::STATUS_PAUSED];
+        if (!$ignoreRunning) {
+            $statuses[] = QueuedJob::STATUS_INIT;
+            $statuses[] = QueuedJob::STATUS_RUN;
+        }
+
         return QueuedJobDescriptor::get()
-            ->filter([
-                'Implementation' => self::class,
-                'JobStatus' => [
-                    QueuedJob::STATUS_NEW,
-                    QueuedJob::STATUS_INIT,
-                    QueuedJob::STATUS_RUN,
-                    QueuedJob::STATUS_WAIT,
-                    QueuedJob::STATUS_PAUSED,
-                ],
-            ])
+            ->filter(['Implementation' => self::class, 'JobStatus' => $statuses])
             ->exists();
     }
 }

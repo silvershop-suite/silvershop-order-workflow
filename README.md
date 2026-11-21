@@ -148,9 +148,8 @@ SilverShop\OrderWorkflow\Job\ScheduledTransitionsJob:
 ```
 
 The sweep is **idempotent** — it only ever touches orders *still* in `from`, so re-running it (or running the job and
-the cron task together) can never double-fire. Like the rest of the module it is **dormant** until core's
-`setStatus()` funnel (#928) ships: without it the sweep fires nothing and the task says so, rather than writing a raw
-status that would bypass the log, notifications and ledger.
+the cron task together) can never double-fire. Every move goes through core's `setStatus()` funnel (core 6.3+), never
+a raw status write, so the audit trail, notifications and ledger always see it.
 
 ## Permission-gated transitions
 
@@ -204,7 +203,7 @@ not blocked here on permission grounds — the graph check (strict mode) owns th
 
 ## Licence
 
-BSD-3-Clause © 2026 Remy Vaartjes.
+BSD-3-Clause © 2026 Remy Vaartjes. See [LICENSE](LICENSE).
 
 ## Credits
 

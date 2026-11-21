@@ -123,6 +123,39 @@ class OrderWorkflowExtensionTest extends SapphireTest
         }
     }
 
+    public function testUnnamedChangeIsNamedAfterTheGraph(): void
+    {
+        // The CMS status dropdown, order-admin buttons and checkout call setStatus() without a name.
+        $order = $this->newOrder('Unpaid');
+        $order->setStatus('Processing'); // off-graph from Unpaid: stays unnamed
+        $order->write();
+        $order->setStatus('Sent'); // Processing -> Sent is the graph's `send`
+        $order->write();
+
+        $this->assertNull($this->activeRecord($order, 'Processing')?->TransitionName, 'off-graph stays unnamed');
+        $this->assertSame('send', $this->activeRecord($order, 'Sent')?->TransitionName, 'named after the graph');
+    }
+
+    public function testCallerNameWins(): void
+    {
+        $order = $this->newOrder('Processing');
+        $order->setStatus('Sent', 'courier_pickup');
+        $order->write();
+
+        $this->assertSame('courier_pickup', $this->activeRecord($order, 'Sent')?->TransitionName);
+    }
+
+    public function testUnnamedChangeIsNamedInTheModuleLogToo(): void
+    {
+        Config::modify()->set(Order::class, 'audit_status_transitions', false);
+
+        $order = $this->newOrder('Processing');
+        $order->setStatus('Sent');
+        $order->write();
+
+        $this->assertSame('send', OrderTransitionLog::get()->filter(['OrderID' => $order->ID])->first()?->TransitionName);
+    }
+
     public function testModuleLogsWhenCoreAuditIsOff(): void
     {
         // A core with the audit trail switched off (or a core without one): the module's own log takes over.

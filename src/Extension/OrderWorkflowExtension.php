@@ -41,14 +41,20 @@ class OrderWorkflowExtension extends Extension
     private array $pending = [];
 
     /**
+     * Names an unnamed change after the graph (by reference: core records the name in its OrderTransition audit),
+     * then, in strict mode, vetoes a change the graph or its permission does not allow.
+     *
      * @param string      $from
      * @param string      $to
-     * @param string|null $name
+     * @param string|null $name passed by reference from core's setStatus()
      * @return bool|null false vetoes the transition; null allows it
      */
-    public function onBeforeStatusChange($from, $to, $name)
+    public function onBeforeStatusChange($from, $to, &$name)
     {
         $order = $this->getOwner();
+        if ($name === null || $name === '') {
+            $name = OrderWorkflowService::singleton()->transitionNameFor($order, (string) $to);
+        }
         $this->pending[spl_object_id($order)] = ['to' => (string) $to, 'name' => $name];
 
         if (!OrderWorkflowService::config()->get('strict')) {
